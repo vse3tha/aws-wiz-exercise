@@ -1,0 +1,91 @@
+name: app-build-scan-push-deploy
+
+on:
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'k8s/**'
+      - '.github/workflows/app.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'k8s/**'
+      - '.github/workflows/app.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  security-events: write
+
+jobs:
+  build-scan-push-deploy:
+    name: Build AMD64 image, scan, push, deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials using GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_OIDC_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build AMD64 image locally for scan
+        uses: docker/build-push-action@v6
+        with:
+          context: ./app
+          platforms: linux/amd64
+          load: true
+          tags: |
+            ${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
+            ${{ vars.ECR_REPOSITORY }}:latest
+
+      - name: Trivy container image scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          # Soft-fail because the lab image may intentionally contain findings; use exit-code 1 for production gating.
+          exit-code: '0'
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+      - name: Push image to ECR on main only
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          docker push ${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
+          docker push ${{ vars.ECR_REPOSITORY }}:latest
+
+      - name: Update kubeconfig on main only
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: aws eks update-kubeconfig --region ${{ vars.AWS_REGION }} --name ${{ vars.EKS_CLUSTER_NAME }}
+
+      - name: Deploy Kubernetes manifests on main only
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        working-directory: k8s
+        env:
+          IMAGE_URI: ${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
+          MONGO_PRIVATE_IP: ${{ vars.MONGO_PRIVATE_IP }}
+          MONGO_APP_USER: ${{ secrets.MONGO_APP_USER }}
+          MONGO_APP_PASSWORD: ${{ secrets.MONGO_APP_PASSWORD }}
+          WAF_ACL_ARN: ${{ vars.WAF_ACL_ARN }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y gettext-base
+          ./render.sh
+          kubectl apply -f rendered/
+          kubectl -n wizexercise rollout status deployment/wizexercise-todo --timeout=5m

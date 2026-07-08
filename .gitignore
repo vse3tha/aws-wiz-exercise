@@ -1,0 +1,23 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+*.tfplan
+
+# Local env/secrets
+.env
+*.pem
+*.key
+id_rsa*
+wizexercise*
+
+# Build artifacts
+node_modules/
+dist/
+build/
+rendered/
+.DS_Store

@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: wizexercise-admin-sa
+  namespace: wizexercise
+---
+# Intentional weakness: app service account receives cluster-wide admin privilege.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: wizexercise-todo-cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: wizexercise-admin-sa
+    namespace: wizexercise
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io

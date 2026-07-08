@@ -1,0 +1,15 @@
+{
+  "name": "wizexercise-todo",
+  "version": "1.0.0",
+  "description": "Simple MongoDB-backed todo app for AWS Wiz exercise lab",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node -e \"require('./server.js'); setTimeout(() => process.exit(0), 1000)\""
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "mongoose": "^8.5.2"
+  }
+}

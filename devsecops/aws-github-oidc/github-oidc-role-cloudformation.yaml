@@ -1,0 +1,70 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: GitHub Actions OIDC role for Wiz exercise CI/CD. Deploy only if the lab account allows IAM/OIDC changes.
+
+Parameters:
+  GitHubOrgOrUser:
+    Type: String
+    Description: GitHub organization or username, for example vamshi-security
+  GitHubRepo:
+    Type: String
+    Description: GitHub repository name, for example aws-wiz-exercise
+  RoleName:
+    Type: String
+    Default: wizexercise-github-actions-oidc-role
+  ExistingProviderArn:
+    Type: String
+    Default: ''
+    Description: Optional existing GitHub OIDC provider ARN. Leave blank to create one.
+
+Conditions:
+  CreateProvider: !Equals [!Ref ExistingProviderArn, '']
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+
+  GitHubActionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - CreateProvider
+                - !Ref GitHubOidcProvider
+                - !Ref ExistingProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOrgOrUser}/${GitHubRepo}:*
+      ManagedPolicyArns:
+        # Lab convenience policy. For production, replace with least-privilege policies scoped to EKS/ECR/VPC/IAM resources.
+        - arn:aws:iam::aws:policy/PowerUserAccess
+      Policies:
+        - PolicyName: wizexercise-iam-passrole-lab
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                  - iam:GetRole
+                  - iam:CreateServiceLinkedRole
+                Resource: '*'
+
+Outputs:
+  GitHubActionsRoleArn:
+    Description: Add this value as GitHub secret AWS_GITHUB_OIDC_ROLE_ARN
+    Value: !GetAtt GitHubActionsRole.Arn
