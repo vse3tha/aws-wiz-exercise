@@ -1,0 +1,17 @@
+# Rename to lab-restricted.auto.tfvars, or pass these values with -var on the CLI.
+# Use this profile in AWS training/lab accounts where GuardDuty is centrally managed
+# or blocked by an AWS Organizations Service Control Policy.
+
+create_guardduty_detector      = false
+enable_guardduty_eks_audit_feature = false
+existing_guardduty_detector_id = ""
+
+# AWS Config allows only one recorder/delivery channel per account/region.
+# Keep false when the lab already has Config enabled.
+create_config_recorder = false
+
+# Leave true only if your IAM/SCP allows PutConfigRule and Config is already enabled.
+# If PutConfigRule is also denied, set this to false and use EKS audit logs/WAF as detective evidence.
+enable_config_rules = true
+
+manage_aws_load_balancer_controller_with_terraform = false
